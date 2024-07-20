@@ -29,20 +29,14 @@ iptables -t nat -A POSTROUTING -o br0 -j MASQUERADE
 iptables -A FORWARD -i br1 -o br0 -j ACCEPT
 iptables -A FORWARD -i br0 -o br1 -m state --state RELATED,ESTABLISHED -j ACCEPT
 
-# Add route for br1 to reach br0
-ip route add 192.168.1.0/24 via 192.168.0.1 dev br1
-
-# Add default route for br1 to use br0 as gateway
-ip route add default via 192.168.1.1 dev br0
-
 # Stop existing dnsmasq
 killall dnsmasq
 
 # Start dnsmasq with new configuration
 dnsmasq --interface=br1 \
-        --dhcp-range=192.168.0.100,192.168.0.254,255.255.255.0,12h \
+        --dhcp-range=192.168.0.100,192.168.0.214,255.255.255.0,12h \
         --dhcp-option=br1,3,192.168.0.1 \
-        --dhcp-option=br1,6,192.168.1.1 \    # IP of the host router
+        --dhcp-option=br1,6,8.8.8.8 \    # IP of the host router
         --dhcp-option=br1,66,192.168.0.1
 
 echo "Bridge br1 created and configured. Interfaces moved. Routing and DHCP set up."
