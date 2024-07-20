@@ -31,12 +31,41 @@ iptables -A FORWARD -i br0 -o br1 -m state --state RELATED,ESTABLISHED -j ACCEPT
 
 # Stop existing dnsmasq
 killall dnsmasq
-
-# Start dnsmasq with new configuration
-dnsmasq --interface=br1 \
-        --dhcp-range=192.168.0.100,192.168.0.214,255.255.255.0,12h \
-        --dhcp-option=br1,3,192.168.0.1 \
-        --dhcp-option=br1,6,8.8.8.8 \    # IP of the host router
-        --dhcp-option=br1,66,192.168.0.1
-
-echo "Bridge br1 created and configured. Interfaces moved. Routing and DHCP set up."
+                                                                                                                                                                                                       
+# Create a custom dnsmasq configuration file                                                                                                                                                           
+cat << EOF > /jffs/configs/dnsmasq.conf.add                                                                                                                                                            
+interface=br1                                                                                                                                                                                          
+no-dhcp-interface=br0                                                                                                                                                                                  
+dhcp-range=interface:br1,192.168.0.100,192.168.0.254,255.255.255.0,12h                                                                                                                                 
+dhcp-option=interface:br1,3,192.168.0.1                                                                                                                                                                
+dhcp-option=interface:br1,6,192.168.1.1                                                                                                                                                                
+dhcp-option=interface:br1,66,192.168.0.1                                                                                                                                                               
+EOF                                                                                                                                                                                                    
+                                                                                                                                                                                                       
+# Ensure dnsmasq uses our custom config                                                                                                                                                                
+nvram set dnsmasq_custom=/jffs/configs/dnsmasq.conf.add                                                                                                                                                
+nvram commit                                                                                                                                                                                           
+                                                                                                                                                                                                       
+# Restart dnsmasq service                                                                                                                                                                              
+service restart_dnsmasq                                                                                                                                                                                
+                                                                                                                                                                                                       
+# Safety check                                                                                                                                                                                         
+if [ -n "$(ps | grep dnsmasq | grep br0)" ]; then                                                                                                                                                      
+    echo "WARNING: dnsmasq appears to be running on br0. Stopping dnsmasq..."                                                                                                                          
+    service stop_dnsmasq                                                                                                                                                                               
+    exit 1                                                                                                                                                                                             
+fi                                                                                                                                                                                                     
+                                                                                                                                                                                                       
+if [ -z "$(ps | grep dnsmasq | grep br1)" ]; then                                                                                                                                                      
+    echo "WARNING: dnsmasq is not running on br1. Attempting to start..."                                                                                                                              
+    service start_dnsmasq                                                                                                                                                                              
+    sleep 5                                                                                                                                                                                            
+    if [ -z "$(ps | grep dnsmasq | grep br1)" ]; then                                                                                                                                                  
+        echo "FAILED to start dnsmasq on br1."                                                                                                                                                         
+        exit 1                                                                                                                                                                                         
+    fi                                                                                                                                                                                                 
+fi                                                                                                                                                                                                     
+                                                                                                                                                                                                       
+echo "Bridge br1 created and configured. Interfaces moved. Routing and DHCP set up."                                                                                                                   
+                                                                                                                                                                                                       
+echo "*/5 * * * * [ -z \"$(ps | grep dnsmasq | grep br0)\" ] && [ -n \"$(ps | grep dnsmasq | grep br1)\" ] || sh /jffs/scripts/setup_br1.sh" >> /jffs/scripts/services-start 
