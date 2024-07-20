@@ -1,0 +1,48 @@
+#!/bin/sh
+
+# vi /jffs/scripts/services-start
+# chmod a+x /jffs/scripts/services-start
+
+# Create br1 and assign IP
+brctl addbr br1
+ifconfig br1 192.168.0.1 netmask 255.255.255.0 up
+
+# Function to move interface from br0 to br1
+move_interface() {
+    ifconfig $1 down
+    brctl delif br0 $1
+    brctl addif br1 $1
+    ifconfig $1 up
+}
+
+# Move interfaces
+move_interface eth0
+move_interface eth1
+move_interface eth3
+move_interface wl0.1
+
+# Enable IP forwarding
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
+# Set up NAT and routing
+iptables -t nat -A POSTROUTING -o br0 -j MASQUERADE
+iptables -A FORWARD -i br1 -o br0 -j ACCEPT
+iptables -A FORWARD -i br0 -o br1 -m state --state RELATED,ESTABLISHED -j ACCEPT
+
+# Add route for br1 to reach br0
+ip route add 192.168.1.0/24 via 192.168.0.1 dev br1
+
+# Add default route for br1 to use br0 as gateway
+ip route add default via 192.168.1.1 dev br0
+
+# Stop existing dnsmasq
+killall dnsmasq
+
+# Start dnsmasq with new configuration
+dnsmasq --interface=br1 \
+        --dhcp-range=192.168.0.100,192.168.0.254,255.255.255.0,12h \
+        --dhcp-option=br1,3,192.168.0.1 \
+        --dhcp-option=br1,6,192.168.1.1 \    # IP of the host router
+        --dhcp-option=br1,66,192.168.0.1
+
+echo "Bridge br1 created and configured. Interfaces moved. Routing and DHCP set up."
